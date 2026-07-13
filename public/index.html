@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GBAKA — Suivi de Caisse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<meta name="theme-color" content="#1A1512">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1A1512;
+    --panel:#262019;
+    --panel-2:#2F281F;
+    --border:rgba(242,169,59,0.18);
+    --amber:#F2A93B;
+    --amber-deep:#C9821C;
+    --income:#4CAF7D;
+    --expense:#D65A45;
+    --text:#F2ECDD;
+    --text-soft:#9C8F7A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:820px;margin:0 auto;padding:32px 20px 70px;}
+
+  header{margin-bottom:24px;}
+  .plaque{
+    display:inline-block;
+    background:var(--amber);
+    color:#1A1512;
+    font-family:'Bungee', cursive;
+    font-size:clamp(20px,5vw,30px);
+    padding:12px 22px;
+    border-radius:4px;
+    transform:rotate(-1deg);
+    box-shadow:0 6px 16px rgba(0,0,0,0.4);
+    margin-bottom:10px;
+  }
+  .subtitle{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--text-soft);
+    margin:0;
+  }
+
+  /* Dashboard */
+  .dashboard{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    gap:12px;
+    margin:24px 0 28px;
+  }
+  .dash-card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:16px 16px;
+  }
+  .dash-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--text-soft);
+    margin:0 0 6px;
+  }
+  .dash-value{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:20px;
+    margin:0;
+  }
+  .dash-value.income{color:var(--income);}
+  .dash-value.expense{color:var(--expense);}
+  .dash-value.amber{color:var(--amber);}
+  .dash-sub{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--text-soft);
+    margin:4px 0 0;
+  }
+
+  /* Tabs */
+  .tabs{
+    display:flex;
+    gap:0;
+    border-bottom:1px solid var(--border);
+    margin-bottom:22px;
+    overflow-x:auto;
+  }
+  .tab{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    padding:10px 16px;
+    cursor:pointer;
+    background:transparent;
+    border:none;
+    color:var(--text-soft);
+    white-space:nowrap;
+    border-bottom:2px solid transparent;
+  }
+  .tab.active{color:var(--amber);border-bottom-color:var(--amber);}
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* Month selector */
+  .month-select{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:22px;
+    flex-wrap:wrap;
+  }
+  input[type="month"]{
+    font-family:'JetBrains Mono', monospace;
+    font-size:14px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:9px 12px;
+    border-radius:6px;
+  }
+  .month-total{
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    color:var(--text-soft);
+  }
+  .month-total b{color:var(--income);}
+
+  .section-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--text-soft);
+    margin:28px 0 14px;
+  }
+
+  /* Days grid */
+  .days-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));
+    gap:8px;
+  }
+  .day-cell{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px;
+  }
+  .day-cell.filled{border-color:var(--income);}
+  .day-cell.today{
+    border-color:var(--amber);
+    border-width:2px;
+    box-shadow:0 0 0 3px rgba(242,169,59,0.15);
+  }
+  .day-cell.today .day-num{color:var(--amber);font-weight:700;}
+  .day-num{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--text-soft);
+    margin:0 0 4px;
+  }
+  .day-cell input{
+    width:100%;
+    background:transparent;
+    border:none;
+    color:var(--income);
+    font-family:'JetBrains Mono', monospace;
+    font-weight:600;
+    font-size:13px;
+    padding:0;
+  }
+  .day-cell input:focus{outline:none;}
+  .day-cell input::placeholder{color:var(--text-soft);opacity:0.5;}
+
+  /* Expenses */
+  .expense-row-wrap{margin-bottom:10px;}
+  .expense-row{
+    display:grid;
+    grid-template-columns:64px 1fr 110px 32px;
+    gap:8px;
+    align-items:center;
+    margin-bottom:0;
+  }
+  .exp-jour{
+    font-family:'JetBrains Mono', monospace !important;
+    text-align:center;
+    padding:9px 4px !important;
+  }
+  .exp-custom{
+    margin-top:6px;
+    border-color:var(--amber) !important;
+  }
+  select, input[type="text"], input[type="number"]{
+    font-family:'Inter', sans-serif;
+    font-size:13.5px;
+    background:var(--panel);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:9px 10px;
+    border-radius:6px;
+    width:100%;
+  }
+  input[type="number"]{
+    font-family:'JetBrains Mono', monospace;
+    color:var(--expense);
+  }
+  .expense-remove{
+    background:transparent;
+    border:none;
+    color:var(--expense);
+    cursor:pointer;
+    font-size:18px;
+    padding:0;
+  }
+  button.addbtn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    border:1px dashed var(--amber);
+    background:transparent;
+    color:var(--amber);
+    padding:9px 14px;
+    border-radius:6px;
+    cursor:pointer;
+    margin-top:4px;
+  }
+  button.addbtn:hover{background:rgba(242,169,59,0.1);}
+
+  /* Chart */
+  .chart{
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+    height:120px;
+    margin-bottom:8px;
+    padding:0 2px;
+  }
+  .bar-wrap{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    height:100%;
+  }
+  .bar{
+    width:100%;
+    max-width:26px;
+    background:linear-gradient(180deg, var(--amber), var(--amber-deep));
+    border-radius:4px 4px 0 0;
+    min-height:2px;
+  }
+  .bar-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    color:var(--text-soft);
+    margin-top:6px;
+    writing-mode:vertical-rl;
+    text-orientation:mixed;
+  }
+
+  /* Reconciliation */
+  .reconcile-box{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:18px 18px;
+    margin-bottom:12px;
+  }
+  .reconcile-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:14px;
+  }
+  .reconcile-row input, .reconcile-row .ecart{margin-top:2px;}
+  .reconcile-row label{
+    font-size:13.5px;
+    color:var(--text-soft);
+  }
+  .reconcile-hint{
+    font-size:11px;
+    color:var(--text-soft);
+    opacity:0.7;
+    font-weight:400;
+  }
+  .reconcile-row input{max-width:140px;text-align:right;}
+  .ecart{
+    font-family:'JetBrains Mono', monospace;
+    font-weight:700;
+    font-size:14px;
+  }
+  .ecart.ok{color:var(--income);}
+  .ecart.bad{color:var(--expense);}
+
+  /* Historique / Entretien lists */
+  .log-row{
+    display:grid;
+    grid-template-columns:90px 1fr auto;
+    gap:10px;
+    padding:11px 4px;
+    border-bottom:1px solid var(--border);
+    align-items:center;
+    font-size:13.5px;
+  }
+  .log-date{font-family:'JetBrains Mono', monospace;font-size:11.5px;color:var(--text-soft);}
+  .log-amount{font-family:'JetBrains Mono', monospace;font-weight:600;}
+  .log-amount.income{color:var(--income);}
+  .log-amount.expense{color:var(--expense);}
+
+  .cat-summary{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:10px;
+    padding:12px 4px;
+    border-bottom:1px solid var(--border);
+  }
+  .cat-name{font-size:14px;}
+  .cat-total{font-family:'JetBrains Mono', monospace;font-weight:600;color:var(--expense);}
+
+  .empty{
+    text-align:center;
+    padding:30px 10px;
+    color:var(--text-soft);
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+  }
+  footer{
+    text-align:center;
+    margin-top:40px;
+    padding-top:18px;
+    border-top:1px solid var(--border);
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    color:var(--text-soft);
+    letter-spacing:0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="plaque">GBAKA</div>
+    <p class="subtitle">Suivi de caisse — recettes &amp; entretien</p>
+  </header>
+
+  <div class="dashboard" id="dashboard"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-view="saisie">📝 Saisie du mois</button>
+    <button class="tab" data-view="caisse">💰 Caisse</button>
+    <button class="tab" data-view="historique">📜 Historique</button>
+    <button class="tab" data-view="entretien">🔧 Entretien</button>
+  </div>
+
+  <div class="view active" id="view-saisie">
+    <div class="month-select">
+      <input type="month" id="monthPicker">
+      <span class="month-total" id="monthTotalLabel"></span>
+    </div>
+
+    <p class="section-label">Recettes journalières</p>
+    <div class="days-grid" id="daysGrid"></div>
+
+    <p class="section-label">Dépenses du mois</p>
+    <div id="expensesList"></div>
+    <button class="addbtn" id="btnAddExpense">+ Ajouter une dépense</button>
+  </div>
+
+  <div class="view" id="view-caisse">
+    <p class="section-label">Montant dans la caisse</p>
+    <div class="reconcile-box">
+      <div class="reconcile-row">
+        <label>Cumul de toutes les transactions, tous les mois confondus<br><span class="reconcile-hint">= toutes les recettes − toutes les dépenses, depuis le début</span></label>
+        <span class="ecart" id="soldeTheorique">0</span>
+      </div>
+      <div class="reconcile-row">
+        <label>Solde du mois affiché<br><span class="reconcile-hint">Uniquement les recettes et dépenses du mois en cours — différent du montant ci-dessus</span></label>
+        <span class="ecart" id="soldeDuMois">0</span>
+      </div>
+    </div>
+
+    <p class="section-label">Tendance des recettes (12 derniers mois)</p>
+    <div class="chart" id="chart"></div>
+  </div>
+
+  <div class="view" id="view-historique">
+    <p class="section-label">Historique complet (généré automatiquement)</p>
+    <div id="historiqueList"></div>
+  </div>
+
+  <div class="view" id="view-entretien">
+    <p class="section-label">Dépenses d'entretien — total par catégorie</p>
+    <div id="entretienSummary"></div>
+  </div>
+
+  <footer>GBAKA — SUIVI GÉNÉRÉ AUTOMATIQUEMENT À PARTIR D'UNE SEULE SAISIE</footer>
+</div>
+
+<script>
+const CATEGORIES_COURANTES = ["Imprévus","Vidange","Assurance","Contravention","Visite du véhicule","Pneu","Plaque de voiture","Réparation","Carburant","Autre"];
+
+const DONNEES_IMPORTEES = {"2026-01": {"days": {}, "expenses": []}, "2026-02": {"days": {}, "expenses": []}, "2026-03": {"days": {}, "expenses": []}, "2026-04": {"days": {}, "expenses": []}, "2026-05": {"days": {}, "expenses": []}, "2026-06": {"days": {"26": 32000.0, "27": 32000.0, "29": 32000.0, "30": 16000.0}, "expenses": []}, "2026-07": {"days": {"1": 32000.0, "2": 32000.0, "3": 32000.0, "4": 32000.0, "6": 16000.0, "7": 32000.0}, "expenses": [{"categorie": "Vidange", "montant": 75000}, {"categorie": "Plaque De Voiture", "montant": 30000}]}, "2026-08": {"days": {}, "expenses": []}, "2026-09": {"days": {}, "expenses": []}, "2026-10": {"days": {}, "expenses": []}, "2026-11": {"days": {}, "expenses": []}, "2026-12": {"days": {}, "expenses": []}, "2027-07": {"days": {}, "expenses": [{"categorie": "Pneu", "montant": 188000}]}};
+
+let data = {
+  months: JSON.parse(JSON.stringify(DONNEES_IMPORTEES))
+};
+
+function todayMonthKey(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function daysInMonth(monthKey){
+  const [y,m] = monthKey.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
+function ensureMonth(monthKey){
+  if(!data.months[monthKey]) data.months[monthKey] = { days: {}, expenses: [] };
+  return data.months[monthKey];
+}
+function monthLabel(monthKey){
+  const [y,m] = monthKey.split('-').map(Number);
+  const noms = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+  return `${noms[m-1]} ${y}`;
+}
+function monthTotal(monthKey){
+  const md = data.months[monthKey];
+  if(!md) return { gains:0, depenses:0 };
+  const gains = Object.values(md.days).reduce((a,b)=>a+(Number(b)||0), 0);
+  const depenses = md.expenses.reduce((a,e)=>a+(Number(e.montant)||0), 0);
+  return { gains, depenses };
+}
+function totalGlobal(){
+  let gains = 0, depenses = 0;
+  Object.keys(data.months).forEach(mk=>{
+    const t = monthTotal(mk);
+    gains += t.gains;
+    depenses += t.depenses;
+  });
+  return { gains, depenses };
+}
+function formatFCFA(n){
+  return Number(n||0).toLocaleString('fr-FR') + ' FCFA';
+}
+
+// --- Persistence ---
+async function loadData(){
+  try{
+    const res = await fetch('/.netlify/functions/gbaka-data');
+    if(res.ok){
+      const json = await res.json();
+      if(json && json.value){
+        data = JSON.parse(json.value);
+        if(!data.months) data.months = {};
+      }
+    }
+  } catch(e){ /* first use, keep defaults */ }
+}
+async function saveData(){
+  try{
+    await fetch('/.netlify/functions/gbaka-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: JSON.stringify(data) })
+    });
+  } catch(e){ console.error('Erreur de sauvegarde', e); }
+}
+
+let saveTimeout = null;
+let saveStatusTimeout = null;
+function scheduleSave(){
+  showSaveStatus('En attente…');
+  if(saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async ()=>{
+    await saveData();
+    showSaveStatus('Enregistré ✓', true);
+  }, 700);
+}
+function showSaveStatus(text, autoHide){
+  let el = document.getElementById('saveStatus');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'saveStatus';
+    el.style.cssText = 'position:fixed;bottom:16px;right:16px;background:var(--panel);border:1px solid var(--border);color:var(--text-soft);font-family:JetBrains Mono, monospace;font-size:11px;padding:8px 12px;border-radius:6px;z-index:2000;opacity:0.9;';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.display = 'block';
+  if(saveStatusTimeout) clearTimeout(saveStatusTimeout);
+  if(autoHide){
+    saveStatusTimeout = setTimeout(()=>{ el.style.display = 'none'; }, 1500);
+  }
+}
+
+// --- Dashboard ---
+function renderDashboard(){
+  const g = totalGlobal();
+  const solde = g.gains - g.depenses;
+  const currentMonth = document.getElementById('monthPicker').value || todayMonthKey();
+  const cm = monthTotal(currentMonth);
+  const dash = document.getElementById('dashboard');
+  dash.innerHTML = `
+    <div class="dash-card">
+      <p class="dash-label">Solde en caisse</p>
+      <p class="dash-value ${solde>=0?'income':'expense'}">${formatFCFA(solde)}</p>
+    </div>
+    <div class="dash-card">
+      <p class="dash-label">Recettes ce mois</p>
+      <p class="dash-value income">${formatFCFA(cm.gains)}</p>
+    </div>
+    <div class="dash-card">
+      <p class="dash-label">Dépenses ce mois</p>
+      <p class="dash-value expense">${formatFCFA(cm.depenses)}</p>
+    </div>
+    <div class="dash-card">
+      <p class="dash-label">Total recettes (tous les mois)</p>
+      <p class="dash-value amber">${formatFCFA(g.gains)}</p>
+    </div>
+  `;
+}
+
+// --- Saisie du mois ---
+function formatDateLabel(monthKey, day){
+  const [y,m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m-1, day);
+  const joursAbbrev = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+  const jj = String(day).padStart(2,'0');
+  const mm = String(m).padStart(2,'0');
+  return `${joursAbbrev[d.getDay()]} ${jj}/${mm}/${y}`;
+}
+function isToday(monthKey, day){
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  return monthKey === todayKey && now.getDate() === day;
+}
+function renderDaysGrid(){
+  const monthKey = document.getElementById('monthPicker').value || todayMonthKey();
+  const n = daysInMonth(monthKey);
+  const md = ensureMonth(monthKey);
+  const grid = document.getElementById('daysGrid');
+  let html = '';
+  for(let d=1; d<=n; d++){
+    const val = md.days[d] || '';
+    const todayClass = isToday(monthKey, d) ? 'today' : '';
+    html += `
+      <div class="day-cell ${val ? 'filled':''} ${todayClass}">
+        <p class="day-num">${formatDateLabel(monthKey, d)}${todayClass ? " · Aujourd'hui" : ''}</p>
+        <input type="number" data-day="${d}" placeholder="0" value="${val}">
+      </div>
+    `;
+  }
+  grid.innerHTML = html;
+  grid.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', async ()=>{
+      const day = inp.getAttribute('data-day');
+      const mk = document.getElementById('monthPicker').value;
+      const m = ensureMonth(mk);
+      if(inp.value === '') delete m.days[day];
+      else m.days[day] = Number(inp.value);
+      inp.parentElement.classList.toggle('filled', !!inp.value);
+      scheduleSave();
+      updateMonthTotalLabel();
+      renderDashboard();
+    });
+  });
+}
+function updateMonthTotalLabel(){
+  const mk = document.getElementById('monthPicker').value || todayMonthKey();
+  const t = monthTotal(mk);
+  document.getElementById('monthTotalLabel').innerHTML =
+    `<b>${formatFCFA(t.gains)}</b> de recettes ce mois-ci`;
+}
+
+const CATEGORIES_FIXES = CATEGORIES_COURANTES.filter(c => c !== "Autre");
+function estCategoriePersonnalisee(categorie){
+  return !CATEGORIES_FIXES.includes(categorie);
+}
+function renderExpensesList(){
+  const mk = document.getElementById('monthPicker').value || todayMonthKey();
+  const md = ensureMonth(mk);
+  const n = daysInMonth(mk);
+  const list = document.getElementById('expensesList');
+  if(md.expenses.length === 0){
+    list.innerHTML = `<div class="empty">Aucune dépense enregistrée ce mois-ci.</div>`;
+    return;
+  }
+  list.innerHTML = md.expenses.map((e, idx)=>{
+    const perso = estCategoriePersonnalisee(e.categorie);
+    const jour = e.jour || 1;
+    let jourOptions = '';
+    for(let d=1; d<=n; d++){
+      jourOptions += `<option value="${d}" ${d===jour?'selected':''}>${d}</option>`;
+    }
+    return `
+    <div class="expense-row-wrap" data-idx="${idx}">
+      <div class="expense-row">
+        <select class="exp-jour" title="Jour de la dépense">${jourOptions}</select>
+        <select class="exp-cat">
+          ${CATEGORIES_FIXES.map(c=>`<option value="${c}" ${c===e.categorie?'selected':''}>${c}</option>`).join('')}
+          <option value="Autre" ${perso?'selected':''}>Autre (préciser)</option>
+        </select>
+        <input type="number" class="exp-montant" placeholder="Montant" value="${e.montant || ''}">
+        <button class="expense-remove" title="Supprimer">✕</button>
+      </div>
+      ${perso ? `<input type="text" class="exp-custom" placeholder="Précise la dépense…" value="${e.categorie === 'Autre' ? '' : e.categorie}">` : ''}
+    </div>
+  `;
+  }).join('');
+
+  list.querySelectorAll('.expense-row-wrap').forEach(wrap=>{
+    const idx = Number(wrap.getAttribute('data-idx'));
+    wrap.querySelector('.exp-cat').addEventListener('change', async (e)=>{
+      md.expenses[idx].categorie = e.target.value;
+      await saveData();
+      renderExpensesList();
+    });
+    wrap.querySelector('.exp-jour').addEventListener('change', async (e)=>{
+      md.expenses[idx].jour = Number(e.target.value);
+      await saveData();
+    });
+    const customInput = wrap.querySelector('.exp-custom');
+    if(customInput){
+      customInput.addEventListener('input', (e)=>{
+        md.expenses[idx].categorie = e.target.value.trim() || 'Autre';
+        scheduleSave();
+      });
+    }
+    wrap.querySelector('.exp-montant').addEventListener('input', async (e)=>{
+      md.expenses[idx].montant = Number(e.target.value) || 0;
+      scheduleSave();
+      renderDashboard();
+      updateMonthTotalLabel();
+    });
+    wrap.querySelector('.expense-remove').addEventListener('click', async ()=>{
+      md.expenses.splice(idx, 1);
+      await saveData();
+      renderExpensesList();
+      renderDashboard();
+      updateMonthTotalLabel();
+    });
+  });
+}
+
+async function addExpense(){
+  const mk = document.getElementById('monthPicker').value || todayMonthKey();
+  const md = ensureMonth(mk);
+  const jourParDefaut = (mk === todayMonthKey()) ? new Date().getDate() : 1;
+  md.expenses.push({ categorie: CATEGORIES_COURANTES[0], montant: 0, jour: jourParDefaut });
+  await saveData();
+  renderExpensesList();
+}
+
+// --- Caisse (chart + reconciliation) ---
+function renderChart(){
+  const chart = document.getElementById('chart');
+  const now = new Date();
+  const months = [];
+  for(let i=11; i>=0; i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+  const totals = months.map(mk=>monthTotal(mk).gains);
+  const max = Math.max(...totals, 1);
+  chart.innerHTML = months.map((mk,i)=>{
+    const [y,m] = mk.split('-');
+    const h = Math.max(2, Math.round((totals[i]/max)*100));
+    return `<div class="bar-wrap">
+      <div class="bar" style="height:${h}px" title="${formatFCFA(totals[i])}"></div>
+      <div class="bar-label">${m}/${y.slice(2)}</div>
+    </div>`;
+  }).join('');
+}
+function renderReconciliation(){
+  const g = totalGlobal();
+  const soldeGlobal = g.gains - g.depenses;
+  document.getElementById('soldeTheorique').textContent = formatFCFA(soldeGlobal);
+  document.getElementById('soldeTheorique').className = 'ecart ' + (soldeGlobal>=0 ? 'ok':'bad');
+
+  const mk = document.getElementById('monthPicker').value || todayMonthKey();
+  const cm = monthTotal(mk);
+  const soldeMois = cm.gains - cm.depenses;
+  const soldeMoisEl = document.getElementById('soldeDuMois');
+  soldeMoisEl.textContent = formatFCFA(soldeMois);
+  soldeMoisEl.className = 'ecart ' + (soldeMois>=0 ? 'ok':'bad');
+}
+
+// --- Historique (auto-généré) ---
+function renderHistorique(){
+  const rows = [];
+  Object.keys(data.months).sort().forEach(mk=>{
+    const md = data.months[mk];
+    Object.entries(md.days).forEach(([day, montant])=>{
+      if(Number(montant) > 0){
+        rows.push({ date: `${mk}-${String(day).padStart(2,'0')}`, type:'Recette', montant: Number(montant) });
+      }
+    });
+    md.expenses.forEach(e=>{
+      if(Number(e.montant) > 0){
+        const jour = e.jour || 1;
+        rows.push({ date: `${mk}-${String(jour).padStart(2,'0')}`, type: e.categorie, montant: -Number(e.montant) });
+      }
+    });
+  });
+  rows.sort((a,b)=> a.date < b.date ? 1 : -1);
+
+  const list = document.getElementById('historiqueList');
+  if(rows.length === 0){
+    list.innerHTML = `<div class="empty">Aucune donnée enregistrée pour l'instant.</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(r=>`
+    <div class="log-row">
+      <div class="log-date">${r.date}</div>
+      <div>${r.type}</div>
+      <div class="log-amount ${r.montant>=0?'income':'expense'}">${r.montant>=0?'+':''}${formatFCFA(r.montant)}</div>
+    </div>
+  `).join('');
+}
+
+// --- Entretien (agrégation auto par catégorie) ---
+function renderEntretien(){
+  const totauxParCategorie = {};
+  Object.values(data.months).forEach(md=>{
+    md.expenses.forEach(e=>{
+      const cat = e.categorie || 'Autre';
+      totauxParCategorie[cat] = (totauxParCategorie[cat]||0) + (Number(e.montant)||0);
+    });
+  });
+  const entries = Object.entries(totauxParCategorie).sort((a,b)=>b[1]-a[1]);
+  const container = document.getElementById('entretienSummary');
+  if(entries.length === 0){
+    container.innerHTML = `<div class="empty">Aucune dépense d'entretien enregistrée pour l'instant.</div>`;
+    return;
+  }
+  const total = entries.reduce((a,[,v])=>a+v, 0);
+  container.innerHTML = entries.map(([cat, montant])=>`
+    <div class="cat-summary">
+      <span class="cat-name">${cat}</span>
+      <span class="cat-total">${formatFCFA(montant)}</span>
+    </div>
+  `).join('') + `
+    <div class="cat-summary" style="border-top:2px solid var(--border); margin-top:6px; padding-top:14px;">
+      <span class="cat-name" style="font-weight:700;">Total</span>
+      <span class="cat-total" style="color:var(--amber);">${formatFCFA(total)}</span>
+    </div>
+  `;
+}
+
+// --- Navigation ---
+function switchView(viewName){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.getAttribute('data-view')===viewName));
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+viewName).classList.add('active');
+  if(viewName === 'caisse'){ renderChart(); renderReconciliation(); }
+  if(viewName === 'historique'){ renderHistorique(); }
+  if(viewName === 'entretien'){ renderEntretien(); }
+}
+
+async function init(){
+  await loadData();
+
+  const picker = document.getElementById('monthPicker');
+  picker.value = todayMonthKey();
+  picker.addEventListener('change', ()=>{
+    renderDaysGrid();
+    renderExpensesList();
+    updateMonthTotalLabel();
+    renderDashboard();
+  });
+
+  renderDashboard();
+  renderDaysGrid();
+  renderExpensesList();
+  updateMonthTotalLabel();
+
+  document.getElementById('btnAddExpense').addEventListener('click', addExpense);
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click', ()=>switchView(t.getAttribute('data-view')));
+  });
+
+  async function refreshFromServer(){
+    const active = document.activeElement;
+    const enTrainDeSaisir = active && (active.tagName === 'INPUT' || active.tagName === 'SELECT');
+    if(enTrainDeSaisir) return;
+
+    await loadData();
+    renderDashboard();
+    renderDaysGrid();
+    renderExpensesList();
+    updateMonthTotalLabel();
+    const activeView = document.querySelector('.tab.active');
+    if(activeView){
+      const v = activeView.getAttribute('data-view');
+      if(v === 'caisse'){ renderChart(); renderReconciliation(); }
+      if(v === 'historique'){ renderHistorique(); }
+      if(v === 'entretien'){ renderEntretien(); }
+    }
+  }
+
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible') refreshFromServer();
+  });
+
+  setInterval(refreshFromServer, 15000);
+}
+
+init();
+</script>
+</body>
+</html>
