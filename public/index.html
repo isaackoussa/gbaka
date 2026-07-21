@@ -206,7 +206,7 @@
     margin-top:6px;
     border-color:var(--amber) !important;
   }
-  select, input[type="text"], input[type="number"]{
+  select, input[type="text"], input[type="number"], input[type="date"]{
     font-family:'Inter', sans-serif;
     font-size:13.5px;
     background:var(--panel);
@@ -367,6 +367,8 @@
     <button class="tab" data-view="caisse">💰 Caisse</button>
     <button class="tab" data-view="historique">📜 Historique</button>
     <button class="tab" data-view="entretien">🔧 Entretien</button>
+    <button class="tab" data-view="epargne">🏦 Épargne</button>
+    <button class="tab" data-view="acquisition">🚐 Acquisition</button>
   </div>
 
   <div class="view active" id="view-saisie">
@@ -378,16 +380,20 @@
     <p class="section-label">Recettes journalières</p>
     <div class="days-grid" id="daysGrid"></div>
 
-    <p class="section-label">Dépenses du mois</p>
-    <div id="expensesList"></div>
-    <button class="addbtn" id="btnAddExpense">+ Ajouter une dépense</button>
+    <p class="section-label">Dépenses du mois — 📌 Dépenses fixes</p>
+    <div id="expensesFixesList"></div>
+    <button class="addbtn" id="btnAddExpenseFixe">+ Ajouter une dépense fixe</button>
+
+    <p class="section-label">Dépenses du mois — 🧾 Autres dépenses</p>
+    <div id="expensesAutresList"></div>
+    <button class="addbtn" id="btnAddExpenseAutre">+ Ajouter une autre dépense</button>
   </div>
 
   <div class="view" id="view-caisse">
     <p class="section-label">Montant dans la caisse</p>
     <div class="reconcile-box">
       <div class="reconcile-row">
-        <label>Cumul de toutes les transactions, tous les mois confondus<br><span class="reconcile-hint">= toutes les recettes − toutes les dépenses, depuis le début</span></label>
+        <label>Cumul de toutes les transactions, tous les mois confondus<br><span class="reconcile-hint">= toutes les recettes − toutes les dépenses − l'épargne, depuis le début</span></label>
         <span class="ecart" id="soldeTheorique">0</span>
       </div>
       <div class="reconcile-row">
@@ -398,6 +404,32 @@
 
     <p class="section-label">Tendance des recettes (12 derniers mois)</p>
     <div class="chart" id="chart"></div>
+  </div>
+
+  <div class="view" id="view-epargne">
+    <p class="section-label">Épargne — argent retiré de la caisse</p>
+    <div class="reconcile-box">
+      <div class="reconcile-row" style="margin-bottom:0;">
+        <label>Total épargné<br><span class="reconcile-hint">Somme de tous les retraits vers ton compte épargne</span></label>
+        <span class="ecart ok" id="totalEpargne">0</span>
+      </div>
+    </div>
+    <p class="section-label">Retraits vers l'épargne</p>
+    <div id="epargneList"></div>
+    <button class="addbtn" id="btnAddEpargne">+ Ajouter un retrait vers l'épargne</button>
+  </div>
+
+  <div class="view" id="view-acquisition">
+    <p class="section-label">Acquisition du véhicule</p>
+    <div class="reconcile-box">
+      <div class="reconcile-row" style="margin-bottom:0;">
+        <label>Total acquisition<br><span class="reconcile-hint">Indépendant de la caisse et de l'entretien — tu mets les noms et les prix librement</span></label>
+        <span class="ecart bad" id="totalAcquisition">0</span>
+      </div>
+    </div>
+    <p class="section-label">Détail des dépenses d'acquisition</p>
+    <div id="acquisitionList"></div>
+    <button class="addbtn" id="btnAddAcquisition">+ Ajouter une dépense d'acquisition</button>
   </div>
 
   <div class="view" id="view-historique">
@@ -414,13 +446,35 @@
 </div>
 
 <script>
-const CATEGORIES_COURANTES = ["Imprévus","Vidange","Assurance","Contravention","Visite du véhicule","Pneu","Plaque de voiture","Réparation","Carburant","Autre"];
+const CATEGORIES_DEPENSES_FIXES = ["Vidange simple","Vidange complète","Assurance"];
+const CATEGORIES_DEPENSES_AUTRES = ["Imprévus","Contravention","Visite du véhicule","Pneu","Plaque de voiture","Réparation","Carburant","Autre"];
+const CATEGORIES_COURANTES = [...CATEGORIES_DEPENSES_FIXES, ...CATEGORIES_DEPENSES_AUTRES];
+
+function typeDeCategorie(categorie){
+  const c = (categorie||'').toLowerCase();
+  if(c.includes('vidange') || c.includes('assurance')) return 'fixe';
+  return 'autre';
+}
 
 const DONNEES_IMPORTEES = {"2026-01": {"days": {}, "expenses": []}, "2026-02": {"days": {}, "expenses": []}, "2026-03": {"days": {}, "expenses": []}, "2026-04": {"days": {}, "expenses": []}, "2026-05": {"days": {}, "expenses": []}, "2026-06": {"days": {"26": 32000.0, "27": 32000.0, "29": 32000.0, "30": 16000.0}, "expenses": []}, "2026-07": {"days": {"1": 32000.0, "2": 32000.0, "3": 32000.0, "4": 32000.0, "6": 16000.0, "7": 32000.0}, "expenses": [{"categorie": "Vidange", "montant": 75000}, {"categorie": "Plaque De Voiture", "montant": 30000}]}, "2026-08": {"days": {}, "expenses": []}, "2026-09": {"days": {}, "expenses": []}, "2026-10": {"days": {}, "expenses": []}, "2026-11": {"days": {}, "expenses": []}, "2026-12": {"days": {}, "expenses": []}, "2027-07": {"days": {}, "expenses": [{"categorie": "Pneu", "montant": 188000}]}};
 
 let data = {
-  months: JSON.parse(JSON.stringify(DONNEES_IMPORTEES))
+  months: JSON.parse(JSON.stringify(DONNEES_IMPORTEES)),
+  epargne: [],
+  acquisition: []
 };
+
+// Complète les champs manquants (anciennes données sans épargne/acquisition/type)
+function migrateData(){
+  if(!data.months) data.months = {};
+  if(!Array.isArray(data.epargne)) data.epargne = [];
+  if(!Array.isArray(data.acquisition)) data.acquisition = [];
+  Object.values(data.months).forEach(md=>{
+    if(!Array.isArray(md.expenses)) md.expenses = [];
+    md.expenses.forEach(e=>{ e.type = typeDeCategorie(e.categorie); });
+  });
+}
+migrateData();
 
 function todayMonthKey(){
   const d = new Date();
@@ -455,6 +509,16 @@ function totalGlobal(){
   });
   return { gains, depenses };
 }
+function totalEpargne(){
+  return (data.epargne||[]).reduce((a,e)=>a+(Number(e.montant)||0), 0);
+}
+function totalAcquisition(){
+  return (data.acquisition||[]).reduce((a,e)=>a+(Number(e.montant)||0), 0);
+}
+function todayDateKey(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function formatFCFA(n){
   return Number(n||0).toLocaleString('fr-FR') + ' FCFA';
 }
@@ -467,7 +531,7 @@ async function loadData(){
       const json = await res.json();
       if(json && json.value){
         data = JSON.parse(json.value);
-        if(!data.months) data.months = {};
+        migrateData();
       }
     }
   } catch(e){ /* first use, keep defaults */ }
@@ -511,7 +575,8 @@ function showSaveStatus(text, autoHide){
 // --- Dashboard ---
 function renderDashboard(){
   const g = totalGlobal();
-  const solde = g.gains - g.depenses;
+  const ep = totalEpargne();
+  const solde = g.gains - g.depenses - ep;
   const currentMonth = document.getElementById('monthPicker').value || todayMonthKey();
   const cm = monthTotal(currentMonth);
   const dash = document.getElementById('dashboard');
@@ -519,6 +584,11 @@ function renderDashboard(){
     <div class="dash-card">
       <p class="dash-label">Solde en caisse</p>
       <p class="dash-value ${solde>=0?'income':'expense'}">${formatFCFA(solde)}</p>
+      <p class="dash-sub">après épargne</p>
+    </div>
+    <div class="dash-card">
+      <p class="dash-label">Épargne totale</p>
+      <p class="dash-value amber">${formatFCFA(ep)}</p>
     </div>
     <div class="dash-card">
       <p class="dash-label">Recettes ce mois</p>
@@ -587,46 +657,67 @@ function updateMonthTotalLabel(){
     `<b>${formatFCFA(t.gains)}</b> de recettes ce mois-ci`;
 }
 
-const CATEGORIES_FIXES = CATEGORIES_COURANTES.filter(c => c !== "Autre");
 function estCategoriePersonnalisee(categorie){
-  return !CATEGORIES_FIXES.includes(categorie);
+  return !CATEGORIES_COURANTES.filter(c=>c!=="Autre").includes(categorie);
 }
 function renderExpensesList(){
+  renderExpensesTable('fixe', 'expensesFixesList', "Aucune dépense fixe ce mois-ci.");
+  renderExpensesTable('autre', 'expensesAutresList', "Aucune autre dépense ce mois-ci.");
+}
+function renderExpensesTable(type, containerId, emptyText){
   const mk = document.getElementById('monthPicker').value || todayMonthKey();
   const md = ensureMonth(mk);
   const n = daysInMonth(mk);
-  const list = document.getElementById('expensesList');
-  if(md.expenses.length === 0){
-    list.innerHTML = `<div class="empty">Aucune dépense enregistrée ce mois-ci.</div>`;
+  const list = document.getElementById(containerId);
+  const items = md.expenses
+    .map((e, idx)=>({ e, idx }))
+    .filter(({e})=> (e.type||'autre') === type);
+  if(items.length === 0){
+    list.innerHTML = `<div class="empty">${emptyText}</div>`;
     return;
   }
-  list.innerHTML = md.expenses.map((e, idx)=>{
+  const sousTotal = items.reduce((a,{e})=>a+(Number(e.montant)||0), 0);
+  list.innerHTML = items.map(({e, idx})=>{
     const perso = estCategoriePersonnalisee(e.categorie);
     const jour = e.jour || 1;
     let jourOptions = '';
     for(let d=1; d<=n; d++){
       jourOptions += `<option value="${d}" ${d===jour?'selected':''}>${d}</option>`;
     }
+    let catOptions = '';
+    if(type === 'fixe'){
+      const cats = CATEGORIES_DEPENSES_FIXES.includes(e.categorie)
+        ? CATEGORIES_DEPENSES_FIXES
+        : [e.categorie, ...CATEGORIES_DEPENSES_FIXES];
+      catOptions = cats.map(c=>`<option value="${c}" ${c===e.categorie?'selected':''}>${c}</option>`).join('');
+    } else {
+      catOptions = CATEGORIES_DEPENSES_AUTRES.filter(c=>c!=="Autre")
+        .map(c=>`<option value="${c}" ${c===e.categorie?'selected':''}>${c}</option>`).join('')
+        + `<option value="Autre" ${perso?'selected':''}>Autre (préciser)</option>`;
+    }
     return `
     <div class="expense-row-wrap" data-idx="${idx}">
       <div class="expense-row">
         <select class="exp-jour" title="Jour de la dépense">${jourOptions}</select>
-        <select class="exp-cat">
-          ${CATEGORIES_FIXES.map(c=>`<option value="${c}" ${c===e.categorie?'selected':''}>${c}</option>`).join('')}
-          <option value="Autre" ${perso?'selected':''}>Autre (préciser)</option>
-        </select>
+        <select class="exp-cat">${catOptions}</select>
         <input type="number" class="exp-montant" placeholder="Montant" value="${e.montant || ''}">
         <button class="expense-remove" title="Supprimer">✕</button>
       </div>
-      ${perso ? `<input type="text" class="exp-custom" placeholder="Précise la dépense…" value="${e.categorie === 'Autre' ? '' : e.categorie}">` : ''}
+      ${(type==='autre' && perso) ? `<input type="text" class="exp-custom" placeholder="Précise la dépense…" value="${e.categorie === 'Autre' ? '' : e.categorie}">` : ''}
     </div>
   `;
-  }).join('');
+  }).join('') + `
+    <div class="cat-summary" style="border-bottom:none;">
+      <span class="cat-name" style="color:var(--text-soft);font-size:12.5px;">Sous-total ${type==='fixe'?'dépenses fixes':'autres dépenses'}</span>
+      <span class="cat-total">${formatFCFA(sousTotal)}</span>
+    </div>
+  `;
 
   list.querySelectorAll('.expense-row-wrap').forEach(wrap=>{
     const idx = Number(wrap.getAttribute('data-idx'));
     wrap.querySelector('.exp-cat').addEventListener('change', async (e)=>{
       md.expenses[idx].categorie = e.target.value;
+      md.expenses[idx].type = typeDeCategorie(e.target.value);
       await saveData();
       renderExpensesList();
     });
@@ -657,13 +748,112 @@ function renderExpensesList(){
   });
 }
 
-async function addExpense(){
+async function addExpense(type){
   const mk = document.getElementById('monthPicker').value || todayMonthKey();
   const md = ensureMonth(mk);
   const jourParDefaut = (mk === todayMonthKey()) ? new Date().getDate() : 1;
-  md.expenses.push({ categorie: CATEGORIES_COURANTES[0], montant: 0, jour: jourParDefaut });
+  const catParDefaut = type === 'fixe' ? CATEGORIES_DEPENSES_FIXES[0] : CATEGORIES_DEPENSES_AUTRES[0];
+  md.expenses.push({ categorie: catParDefaut, montant: 0, jour: jourParDefaut, type: type });
   await saveData();
   renderExpensesList();
+}
+
+// --- Épargne (retraits de la caisse vers le compte épargne) ---
+function renderEpargne(){
+  document.getElementById('totalEpargne').textContent = formatFCFA(totalEpargne());
+
+  const list = document.getElementById('epargneList');
+  if(data.epargne.length === 0){
+    list.innerHTML = `<div class="empty">Aucun retrait vers l'épargne pour l'instant.</div>`;
+    return;
+  }
+  list.innerHTML = data.epargne.map((e, idx)=>`
+    <div class="expense-row-wrap" data-idx="${idx}">
+      <div class="expense-row" style="grid-template-columns:130px 1fr 110px 28px;">
+        <input type="date" class="ep-date" value="${e.date || todayDateKey()}">
+        <input type="text" class="ep-note" placeholder="Note (facultatif)…" value="${e.note || ''}">
+        <input type="number" class="ep-montant" placeholder="Montant" value="${e.montant || ''}">
+        <button class="expense-remove" title="Supprimer">✕</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.expense-row-wrap').forEach(wrap=>{
+    const idx = Number(wrap.getAttribute('data-idx'));
+    wrap.querySelector('.ep-date').addEventListener('change', async (e)=>{
+      data.epargne[idx].date = e.target.value;
+      await saveData();
+    });
+    wrap.querySelector('.ep-note').addEventListener('input', (e)=>{
+      data.epargne[idx].note = e.target.value;
+      scheduleSave();
+    });
+    wrap.querySelector('.ep-montant').addEventListener('input', (e)=>{
+      data.epargne[idx].montant = Number(e.target.value) || 0;
+      scheduleSave();
+      renderDashboard();
+      document.getElementById('totalEpargne').textContent = formatFCFA(totalEpargne());
+    });
+    wrap.querySelector('.expense-remove').addEventListener('click', async ()=>{
+      data.epargne.splice(idx, 1);
+      await saveData();
+      renderEpargne();
+      renderDashboard();
+    });
+  });
+}
+async function addEpargne(){
+  data.epargne.push({ date: todayDateKey(), montant: 0, note: '' });
+  await saveData();
+  renderEpargne();
+}
+
+// --- Acquisition du véhicule ---
+function renderAcquisition(){
+  document.getElementById('totalAcquisition').textContent = formatFCFA(totalAcquisition());
+
+  const list = document.getElementById('acquisitionList');
+  if(data.acquisition.length === 0){
+    list.innerHTML = `<div class="empty">Aucune dépense d'acquisition enregistrée. Ajoute l'achat du véhicule, les papiers, etc.</div>`;
+    return;
+  }
+  list.innerHTML = data.acquisition.map((e, idx)=>`
+    <div class="expense-row-wrap" data-idx="${idx}">
+      <div class="expense-row" style="grid-template-columns:130px 1fr 110px 28px;">
+        <input type="date" class="acq-date" value="${e.date || ''}">
+        <input type="text" class="acq-libelle" placeholder="Libellé (achat, carte grise, douane…)" value="${e.libelle || ''}">
+        <input type="number" class="acq-montant" placeholder="Montant" value="${e.montant || ''}">
+        <button class="expense-remove" title="Supprimer">✕</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.expense-row-wrap').forEach(wrap=>{
+    const idx = Number(wrap.getAttribute('data-idx'));
+    wrap.querySelector('.acq-date').addEventListener('change', async (e)=>{
+      data.acquisition[idx].date = e.target.value;
+      await saveData();
+    });
+    wrap.querySelector('.acq-libelle').addEventListener('input', (e)=>{
+      data.acquisition[idx].libelle = e.target.value;
+      scheduleSave();
+    });
+    wrap.querySelector('.acq-montant').addEventListener('input', (e)=>{
+      data.acquisition[idx].montant = Number(e.target.value) || 0;
+      scheduleSave();
+      document.getElementById('totalAcquisition').textContent = formatFCFA(totalAcquisition());
+    });
+    wrap.querySelector('.expense-remove').addEventListener('click', async ()=>{
+      data.acquisition.splice(idx, 1);
+      await saveData();
+      renderAcquisition();
+    });
+  });
+}
+async function addAcquisition(){
+  data.acquisition.push({ date: '', libelle: '', montant: 0 });
+  await saveData();
+  renderAcquisition();
 }
 
 // --- Caisse (chart + reconciliation) ---
@@ -688,7 +878,7 @@ function renderChart(){
 }
 function renderReconciliation(){
   const g = totalGlobal();
-  const soldeGlobal = g.gains - g.depenses;
+  const soldeGlobal = g.gains - g.depenses - totalEpargne();
   document.getElementById('soldeTheorique').textContent = formatFCFA(soldeGlobal);
   document.getElementById('soldeTheorique').className = 'ecart ' + (soldeGlobal>=0 ? 'ok':'bad');
 
@@ -716,6 +906,11 @@ function renderHistorique(){
         rows.push({ date: `${mk}-${String(jour).padStart(2,'0')}`, type: e.categorie, montant: -Number(e.montant) });
       }
     });
+  });
+  (data.epargne||[]).forEach(e=>{
+    if(Number(e.montant) > 0){
+      rows.push({ date: e.date || todayDateKey(), type: '🏦 Épargne' + (e.note ? ' — ' + e.note : ''), montant: -Number(e.montant) });
+    }
   });
   rows.sort((a,b)=> a.date < b.date ? 1 : -1);
 
@@ -768,8 +963,10 @@ function switchView(viewName){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+viewName).classList.add('active');
   if(viewName === 'caisse'){ renderChart(); renderReconciliation(); }
+  if(viewName === 'epargne'){ renderEpargne(); }
   if(viewName === 'historique'){ renderHistorique(); }
   if(viewName === 'entretien'){ renderEntretien(); }
+  if(viewName === 'acquisition'){ renderAcquisition(); }
 }
 
 async function init(){
@@ -789,7 +986,10 @@ async function init(){
   renderExpensesList();
   updateMonthTotalLabel();
 
-  document.getElementById('btnAddExpense').addEventListener('click', addExpense);
+  document.getElementById('btnAddExpenseFixe').addEventListener('click', ()=>addExpense('fixe'));
+  document.getElementById('btnAddExpenseAutre').addEventListener('click', ()=>addExpense('autre'));
+  document.getElementById('btnAddEpargne').addEventListener('click', addEpargne);
+  document.getElementById('btnAddAcquisition').addEventListener('click', addAcquisition);
   document.querySelectorAll('.tab').forEach(t=>{
     t.addEventListener('click', ()=>switchView(t.getAttribute('data-view')));
   });
@@ -808,8 +1008,10 @@ async function init(){
     if(activeView){
       const v = activeView.getAttribute('data-view');
       if(v === 'caisse'){ renderChart(); renderReconciliation(); }
+      if(v === 'epargne'){ renderEpargne(); }
       if(v === 'historique'){ renderHistorique(); }
       if(v === 'entretien'){ renderEntretien(); }
+      if(v === 'acquisition'){ renderAcquisition(); }
     }
   }
 
