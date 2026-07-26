@@ -366,6 +366,7 @@
     <button class="tab active" data-view="saisie">📝 Saisie du mois</button>
     <button class="tab" data-view="caisse">💰 Caisse</button>
     <button class="tab" data-view="historique">📜 Historique</button>
+    <button class="tab" data-view="avenir">🔔 À venir</button>
     <button class="tab" data-view="entretien">🔧 Entretien</button>
     <button class="tab" data-view="epargne">🏦 Épargne</button>
     <button class="tab" data-view="acquisition">🚐 Acquisition</button>
@@ -437,6 +438,13 @@
     <div id="historiqueList"></div>
   </div>
 
+  <div class="view" id="view-avenir">
+    <p class="section-label">🔔 Charges à venir</p>
+    <div id="avenirBanner"></div>
+    <div id="avenirList"></div>
+    <button class="addbtn" id="btnAddAvenir">+ Ajouter une charge à venir</button>
+  </div>
+
   <div class="view" id="view-entretien">
     <p class="section-label">Dépenses d'entretien — total par catégorie</p>
     <div id="entretienSummary"></div>
@@ -461,14 +469,21 @@ const DONNEES_IMPORTEES = {"2026-01": {"days": {}, "expenses": []}, "2026-02": {
 let data = {
   months: JSON.parse(JSON.stringify(DONNEES_IMPORTEES)),
   epargne: [],
-  acquisition: []
+  acquisition: [],
+  chargesAVenir: [] // { id, date, categorie, montant, notifieLe }
 };
+
+function genId(){
+  return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+}
 
 // Complète les champs manquants (anciennes données sans épargne/acquisition/type)
 function migrateData(){
   if(!data.months) data.months = {};
   if(!Array.isArray(data.epargne)) data.epargne = [];
   if(!Array.isArray(data.acquisition)) data.acquisition = [];
+  if(!Array.isArray(data.chargesAVenir)) data.chargesAVenir = [];
+  data.chargesAVenir.forEach(c=>{ if(!c.id) c.id = genId(); });
   Object.values(data.months).forEach(md=>{
     if(!Array.isArray(md.expenses)) md.expenses = [];
     md.expenses.forEach(e=>{ e.type = typeDeCategorie(e.categorie); });
@@ -754,6 +769,128 @@ async function addExpense(type){
   renderExpensesList();
 }
 
+// --- Charges à venir (avec rappel de notification et bascule vers dépenses du mois) ---
+function renderAvenirBanner(){
+  const banner = document.getElementById('avenirBanner');
+  const todayStr = todayDateKey();
+  const dues = data.chargesAVenir.filter(c=> c.date && c.date <= todayStr);
+  if(dues.length === 0){ banner.innerHTML = ''; return; }
+  const total = dues.reduce((a,c)=>a+(Number(c.montant)||0), 0);
+  banner.innerHTML = `
+    <div class="reconcile-box" style="border-color:var(--amber);margin-bottom:16px;">
+      <div class="reconcile-row" style="margin-bottom:0;">
+        <label>⚠ ${dues.length} charge${dues.length>1?'s':''} due${dues.length>1?'s':''} aujourd'hui ou en retard<br><span class="reconcile-hint">Clique sur "✅ Fait" une fois payée pour la passer en dépense du mois</span></label>
+        <span class="ecart bad">${formatFCFA(total)}</span>
+      </div>
+    </div>
+  `;
+}
+function renderChargesAVenir(){
+  renderAvenirBanner();
+  const list = document.getElementById('avenirList');
+  const items = data.chargesAVenir
+    .map((c, idx)=>({ c, idx }))
+    .sort((a,b)=> (a.c.date||'') < (b.c.date||'') ? -1 : 1);
+  if(items.length === 0){
+    list.innerHTML = `<div class="empty">Aucune charge à venir enregistrée.</div>`;
+    return;
+  }
+  const todayStr = todayDateKey();
+  list.innerHTML = items.map(({c, idx})=>{
+    const perso = estCategoriePersonnalisee(c.categorie);
+    const enRetard = c.date && c.date < todayStr;
+    const estAujourdhui = c.date === todayStr;
+    return `
+    <div class="expense-row-wrap" data-idx="${idx}">
+      <div class="expense-row" style="grid-template-columns:130px 1fr 110px 28px;">
+        <input type="date" class="av-date" value="${c.date || ''}">
+        <select class="av-cat">
+          ${CATEGORIES_COURANTES.map(x=>`<option value="${x}" ${x===c.categorie?'selected':''}>${x}</option>`).join('')}
+        </select>
+        <input type="number" class="av-montant" placeholder="Montant" value="${c.montant || ''}">
+        <button class="expense-remove" title="Supprimer">✕</button>
+      </div>
+      ${perso ? `<input type="text" class="av-custom" placeholder="Précise la dépense…" value="${c.categorie === 'Autre' ? '' : c.categorie}">` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${enRetard?'var(--expense)':(estAujourdhui?'var(--amber)':'var(--text-soft)')};">
+          ${enRetard ? '⚠ En retard' : (estAujourdhui ? "🔔 Aujourd'hui" : '')}
+        </span>
+        <button class="addbtn av-fait" style="margin-top:0;">✅ Fait — passer en dépense du mois</button>
+      </div>
+    </div>
+  `;
+  }).join('');
+
+  list.querySelectorAll('.expense-row-wrap').forEach(wrap=>{
+    const idx = Number(wrap.getAttribute('data-idx'));
+    const c = data.chargesAVenir[idx];
+    wrap.querySelector('.av-date').addEventListener('change', async (e)=>{
+      c.date = e.target.value;
+      c.notifieLe = null;
+      await saveData();
+      renderChargesAVenir();
+    });
+    wrap.querySelector('.av-cat').addEventListener('change', async (e)=>{
+      c.categorie = e.target.value;
+      await saveData();
+      renderChargesAVenir();
+    });
+    wrap.querySelector('.av-montant').addEventListener('input', (e)=>{
+      c.montant = Number(e.target.value)||0;
+      scheduleSave();
+    });
+    const custom = wrap.querySelector('.av-custom');
+    if(custom){
+      custom.addEventListener('input', (e)=>{ c.categorie = e.target.value; scheduleSave(); });
+    }
+    wrap.querySelector('.expense-remove').addEventListener('click', async ()=>{
+      data.chargesAVenir.splice(idx, 1);
+      await saveData();
+      renderChargesAVenir();
+    });
+    wrap.querySelector('.av-fait').addEventListener('click', async ()=>{
+      const mk = (c.date || todayDateKey()).slice(0,7);
+      const jour = Number((c.date || todayDateKey()).split('-')[2]) || 1;
+      const md = ensureMonth(mk);
+      md.expenses.push({ categorie: c.categorie, montant: c.montant || 0, jour, type: typeDeCategorie(c.categorie) });
+      data.chargesAVenir.splice(idx, 1);
+      await saveData();
+      renderChargesAVenir();
+      // Si on est sur le mois concerné dans Saisie, rafraîchir la liste des dépenses
+      const mkAffiche = document.getElementById('monthPicker').value || todayMonthKey();
+      if(mkAffiche === mk){ renderExpensesList(); renderDashboard(); updateMonthTotalLabel(); }
+    });
+  });
+}
+async function addChargeAVenir(){
+  data.chargesAVenir.push({ id: genId(), date: todayDateKey(), categorie: CATEGORIES_COURANTES[0], montant: 0, notifieLe: null });
+  await saveData();
+  renderChargesAVenir();
+  demanderPermissionNotification();
+}
+function demanderPermissionNotification(){
+  if(typeof Notification !== 'undefined' && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+}
+async function verifierNotificationsAVenir(){
+  const todayStr = todayDateKey();
+  const aNotifier = data.chargesAVenir.filter(c=> c.date && c.date <= todayStr && c.notifieLe !== todayStr);
+  if(aNotifier.length === 0) return;
+  if(typeof Notification !== 'undefined' && Notification.permission === 'granted'){
+    aNotifier.forEach(c=>{
+      try{
+        new Notification('GBAKA — Charge à venir', {
+          body: `${c.categorie} — ${formatFCFA(c.montant)} (${c.date})`,
+          tag: 'gbaka-avenir-' + c.id
+        });
+      } catch(e){ /* Notification indisponible sur ce navigateur */ }
+    });
+  }
+  aNotifier.forEach(c=>{ c.notifieLe = todayStr; });
+  await saveData();
+}
+
 // --- Épargne (retraits de la caisse vers le compte épargne) ---
 function renderEpargne(){
   document.getElementById('totalEpargne').textContent = formatFCFA(totalEpargne());
@@ -958,6 +1095,7 @@ function switchView(viewName){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.getAttribute('data-view')===viewName));
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+viewName).classList.add('active');
+  if(viewName === 'avenir'){ renderChargesAVenir(); }
   if(viewName === 'caisse'){ renderChart(); renderReconciliation(); }
   if(viewName === 'epargne'){ renderEpargne(); }
   if(viewName === 'historique'){ renderHistorique(); }
@@ -981,11 +1119,14 @@ async function init(){
   renderDaysGrid();
   renderExpensesList();
   updateMonthTotalLabel();
+  renderAvenirBanner();
+  verifierNotificationsAVenir();
 
   document.getElementById('btnAddExpenseFixe').addEventListener('click', ()=>addExpense('fixe'));
   document.getElementById('btnAddExpenseAutre').addEventListener('click', ()=>addExpense('autre'));
   document.getElementById('btnAddEpargne').addEventListener('click', addEpargne);
   document.getElementById('btnAddAcquisition').addEventListener('click', addAcquisition);
+  document.getElementById('btnAddAvenir').addEventListener('click', addChargeAVenir);
   document.querySelectorAll('.tab').forEach(t=>{
     t.addEventListener('click', ()=>switchView(t.getAttribute('data-view')));
   });
@@ -1000,9 +1141,11 @@ async function init(){
     renderDaysGrid();
     renderExpensesList();
     updateMonthTotalLabel();
+    await verifierNotificationsAVenir();
     const activeView = document.querySelector('.tab.active');
     if(activeView){
       const v = activeView.getAttribute('data-view');
+      if(v === 'avenir'){ renderChargesAVenir(); } else { renderAvenirBanner(); }
       if(v === 'caisse'){ renderChart(); renderReconciliation(); }
       if(v === 'epargne'){ renderEpargne(); }
       if(v === 'historique'){ renderHistorique(); }
