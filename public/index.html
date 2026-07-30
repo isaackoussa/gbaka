@@ -440,6 +440,12 @@
 
   <div class="view" id="view-avenir">
     <p class="section-label">🔔 Charges à venir</p>
+    <div class="reconcile-box" style="margin-bottom:16px;">
+      <div class="reconcile-row" style="margin-bottom:0;">
+        <label>Total des charges à venir<br><span class="reconcile-hint">Toutes les charges non encore payées, peu importe la date</span></label>
+        <span class="ecart bad" id="totalAvenir">0</span>
+      </div>
+    </div>
     <div id="avenirBanner"></div>
     <div id="avenirList"></div>
     <button class="addbtn" id="btnAddAvenir">+ Ajouter une charge à venir</button>
@@ -602,8 +608,9 @@ function renderDashboard(){
       <p class="dash-sub">après épargne</p>
     </div>
     <div class="dash-card">
-      <p class="dash-label">Recettes ce mois</p>
-      <p class="dash-value income">${formatFCFA(cm.gains)}</p>
+      <p class="dash-label">Gain du mois</p>
+      <p class="dash-value ${(cm.gains-cm.depenses)>=0?'income':'expense'}">${formatFCFA(cm.gains-cm.depenses)}</p>
+      <p class="dash-sub">recettes − dépenses du mois</p>
     </div>
     <div class="dash-card">
       <p class="dash-label">Dépenses ce mois</p>
@@ -785,7 +792,11 @@ function renderAvenirBanner(){
     </div>
   `;
 }
+function totalAvenir(){
+  return data.chargesAVenir.reduce((a,c)=>a+(Number(c.montant)||0), 0);
+}
 function renderChargesAVenir(){
+  document.getElementById('totalAvenir').textContent = formatFCFA(totalAvenir());
   renderAvenirBanner();
   const list = document.getElementById('avenirList');
   const items = data.chargesAVenir
@@ -838,6 +849,7 @@ function renderChargesAVenir(){
     wrap.querySelector('.av-montant').addEventListener('input', (e)=>{
       c.montant = Number(e.target.value)||0;
       scheduleSave();
+      document.getElementById('totalAvenir').textContent = formatFCFA(totalAvenir());
     });
     const custom = wrap.querySelector('.av-custom');
     if(custom){
