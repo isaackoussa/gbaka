@@ -811,12 +811,15 @@ function renderChargesAVenir(){
     const perso = estCategoriePersonnalisee(c.categorie);
     const enRetard = c.date && c.date < todayStr;
     const estAujourdhui = c.date === todayStr;
+    const catOptions = CATEGORIES_COURANTES.filter(x=>x!=="Autre")
+      .map(x=>`<option value="${x}" ${x===c.categorie?'selected':''}>${x}</option>`).join('')
+      + `<option value="Autre" ${perso?'selected':''}>Autre (préciser)</option>`;
     return `
     <div class="expense-row-wrap" data-idx="${idx}">
       <div class="expense-row" style="grid-template-columns:130px 1fr 110px 28px;">
         <input type="date" class="av-date" value="${c.date || ''}">
         <select class="av-cat">
-          ${CATEGORIES_COURANTES.map(x=>`<option value="${x}" ${x===c.categorie?'selected':''}>${x}</option>`).join('')}
+          ${catOptions}
         </select>
         <input type="number" class="av-montant" placeholder="Montant" value="${c.montant || ''}">
         <button class="expense-remove" title="Supprimer">✕</button>
