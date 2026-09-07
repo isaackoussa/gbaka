@@ -240,6 +240,33 @@
     margin-top:4px;
   }
   button.addbtn:hover{background:rgba(242,169,59,0.1);}
+  button.addbtn.depot{border-color:var(--expense);color:var(--expense);}
+  button.addbtn.depot:hover{background:rgba(214,90,69,0.1);}
+  button.addbtn.retrait{border-color:var(--income);color:var(--income);}
+  button.addbtn.retrait:hover{background:rgba(76,175,125,0.1);}
+  .ep-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  /* Epargne */
+  .ep-top{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:6px;
+  }
+  .ep-sens{max-width:130px;font-family:'JetBrains Mono', monospace !important;font-size:12px !important;}
+  .ep-interne{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:11.5px;
+    color:var(--text-soft);
+    cursor:pointer;
+    user-select:none;
+  }
+  .ep-interne input{width:auto;accent-color:var(--amber);}
+  .ep-montant.depot{color:var(--expense);}
+  .ep-montant.retrait{color:var(--income);}
 
   /* Chart */
   .chart{
@@ -408,16 +435,31 @@
   </div>
 
   <div class="view" id="view-epargne">
-    <p class="section-label">Épargne — argent retiré de la caisse</p>
+    <p class="section-label">Épargne — compte séparé de la caisse</p>
     <div class="reconcile-box">
+      <div class="reconcile-row">
+        <label>Solde du compte épargne<br><span class="reconcile-hint">Dépôts − retraits, toutes transactions confondues</span></label>
+        <span class="ecart ok" id="soldeEpargne">0</span>
+      </div>
+      <div class="reconcile-row">
+        <label>Total des dépôts</label>
+        <span class="ecart ok" id="totalDepots">0</span>
+      </div>
+      <div class="reconcile-row">
+        <label>Total des retraits</label>
+        <span class="ecart ok" id="totalRetraits">0</span>
+      </div>
       <div class="reconcile-row" style="margin-bottom:0;">
-        <label>Total épargné<br><span class="reconcile-hint">Somme de tous les retraits vers ton compte épargne</span></label>
-        <span class="ecart ok" id="totalEpargne">0</span>
+        <label>Impact sur la caisse<br><span class="reconcile-hint">Seules les transactions liées à la caisse comptent ici</span></label>
+        <span class="ecart ok" id="epargneImpact">0</span>
       </div>
     </div>
-    <p class="section-label">Retraits vers l'épargne</p>
+    <p class="section-label">Transactions</p>
     <div id="epargneList"></div>
-    <button class="addbtn" id="btnAddEpargne">+ Ajouter un retrait vers l'épargne</button>
+    <div class="ep-actions">
+      <button class="addbtn depot" id="btnAddDepot">+ Dépôt</button>
+      <button class="addbtn retrait" id="btnAddRetrait">+ Retrait</button>
+    </div>
   </div>
 
   <div class="view" id="view-acquisition">
@@ -487,6 +529,11 @@ function genId(){
 function migrateData(){
   if(!data.months) data.months = {};
   if(!Array.isArray(data.epargne)) data.epargne = [];
+  // Anciennes lignes : un montant simple = un depot pris dans la caisse
+  data.epargne.forEach(e=>{
+    if(e.sens !== 'depot' && e.sens !== 'retrait') e.sens = 'depot';
+    if(typeof e.interne !== 'boolean') e.interne = false;
+  });
   if(!Array.isArray(data.acquisition)) data.acquisition = [];
   if(!Array.isArray(data.chargesAVenir)) data.chargesAVenir = [];
   data.chargesAVenir.forEach(c=>{ if(!c.id) c.id = genId(); });
@@ -530,8 +577,20 @@ function totalGlobal(){
   });
   return { gains, depenses };
 }
-function totalEpargne(){
-  return (data.epargne||[]).reduce((a,e)=>a+(Number(e.montant)||0), 0);
+// Somme des montants d'un sens donne ('depot' ou 'retrait')
+function sommeEpargne(sens, seulementCaisse){
+  return (data.epargne||[])
+    .filter(e => e.sens === sens && (!seulementCaisse || !e.interne))
+    .reduce((a,e)=>a+(Number(e.montant)||0), 0);
+}
+// Ce qu'il y a reellement sur le compte epargne
+function soldeEpargne(){
+  return sommeEpargne('depot', false) - sommeEpargne('retrait', false);
+}
+// Ce que l'epargne a retire (net) a la caisse du gbaka.
+// Les transactions internes n'entrent pas dans ce calcul.
+function epargneImpactCaisse(){
+  return sommeEpargne('depot', true) - sommeEpargne('retrait', true);
 }
 function totalAcquisition(){
   return (data.acquisition||[]).reduce((a,e)=>a+(Number(e.montant)||0), 0);
@@ -596,7 +655,7 @@ function showSaveStatus(text, autoHide){
 // --- Dashboard ---
 function renderDashboard(){
   const g = totalGlobal();
-  const ep = totalEpargne();
+  const ep = epargneImpactCaisse();
   const solde = g.gains - g.depenses - ep;
   const currentMonth = document.getElementById('monthPicker').value || todayMonthKey();
   const cm = monthTotal(currentMonth);
@@ -906,21 +965,42 @@ async function verifierNotificationsAVenir(){
   await saveData();
 }
 
-// --- Épargne (retraits de la caisse vers le compte épargne) ---
+// --- Épargne (compte separe, avec transactions internes) ---
+function majTotauxEpargne(){
+  const solde = soldeEpargne();
+  const impact = epargneImpactCaisse();
+  const soldeEl = document.getElementById('soldeEpargne');
+  soldeEl.textContent = formatFCFA(solde);
+  soldeEl.className = 'ecart ' + (solde >= 0 ? 'ok' : 'bad');
+  document.getElementById('totalDepots').textContent = formatFCFA(sommeEpargne('depot', false));
+  document.getElementById('totalRetraits').textContent = formatFCFA(sommeEpargne('retrait', false));
+  document.getElementById('epargneImpact').textContent = formatFCFA(impact);
+}
+
 function renderEpargne(){
-  document.getElementById('totalEpargne').textContent = formatFCFA(totalEpargne());
+  majTotauxEpargne();
 
   const list = document.getElementById('epargneList');
   if(data.epargne.length === 0){
-    list.innerHTML = `<div class="empty">Aucun retrait vers l'épargne pour l'instant.</div>`;
+    list.innerHTML = `<div class="empty">Aucune transaction d'épargne pour l'instant.</div>`;
     return;
   }
   list.innerHTML = data.epargne.map((e, idx)=>`
     <div class="expense-row-wrap" data-idx="${idx}">
+      <div class="ep-top">
+        <select class="ep-sens">
+          <option value="depot" ${e.sens !== 'retrait' ? 'selected' : ''}>↓ Dépôt</option>
+          <option value="retrait" ${e.sens === 'retrait' ? 'selected' : ''}>↑ Retrait</option>
+        </select>
+        <label class="ep-interne">
+          <input type="checkbox" class="ep-interne-chk" ${e.interne ? 'checked' : ''}>
+          transaction interne (n'affecte pas la caisse)
+        </label>
+      </div>
       <div class="expense-row" style="grid-template-columns:130px 1fr 110px 28px;">
         <input type="date" class="ep-date" value="${e.date || todayDateKey()}">
         <input type="text" class="ep-note" placeholder="Note (facultatif)…" value="${e.note || ''}">
-        <input type="number" class="ep-montant" placeholder="Montant" value="${e.montant || ''}">
+        <input type="number" class="ep-montant ${e.sens === 'retrait' ? 'retrait' : 'depot'}" placeholder="Montant" value="${e.montant || ''}">
         <button class="expense-remove" title="Supprimer">✕</button>
       </div>
     </div>
@@ -928,6 +1008,18 @@ function renderEpargne(){
 
   list.querySelectorAll('.expense-row-wrap').forEach(wrap=>{
     const idx = Number(wrap.getAttribute('data-idx'));
+    wrap.querySelector('.ep-sens').addEventListener('change', async (e)=>{
+      data.epargne[idx].sens = e.target.value;
+      await saveData();
+      renderEpargne();
+      renderDashboard();
+    });
+    wrap.querySelector('.ep-interne-chk').addEventListener('change', async (e)=>{
+      data.epargne[idx].interne = e.target.checked;
+      await saveData();
+      majTotauxEpargne();
+      renderDashboard();
+    });
     wrap.querySelector('.ep-date').addEventListener('change', async (e)=>{
       data.epargne[idx].date = e.target.value;
       await saveData();
@@ -940,7 +1032,7 @@ function renderEpargne(){
       data.epargne[idx].montant = Number(e.target.value) || 0;
       scheduleSave();
       renderDashboard();
-      document.getElementById('totalEpargne').textContent = formatFCFA(totalEpargne());
+      majTotauxEpargne();
     });
     wrap.querySelector('.expense-remove').addEventListener('click', async ()=>{
       data.epargne.splice(idx, 1);
@@ -950,8 +1042,8 @@ function renderEpargne(){
     });
   });
 }
-async function addEpargne(){
-  data.epargne.push({ date: todayDateKey(), montant: 0, note: '' });
+async function addEpargne(sens){
+  data.epargne.push({ date: todayDateKey(), montant: 0, note: '', sens: sens, interne: false });
   await saveData();
   renderEpargne();
 }
@@ -1026,7 +1118,7 @@ function renderChart(){
 }
 function renderReconciliation(){
   const g = totalGlobal();
-  const soldeGlobal = g.gains - g.depenses - totalEpargne();
+  const soldeGlobal = g.gains - g.depenses - epargneImpactCaisse();
   document.getElementById('soldeTheorique').textContent = formatFCFA(soldeGlobal);
   document.getElementById('soldeTheorique').className = 'ecart ' + (soldeGlobal>=0 ? 'ok':'bad');
 
@@ -1056,8 +1148,15 @@ function renderHistorique(){
     });
   });
   (data.epargne||[]).forEach(e=>{
-    if(Number(e.montant) > 0){
-      rows.push({ date: e.date || todayDateKey(), type: '🏦 Épargne' + (e.note ? ' — ' + e.note : ''), montant: -Number(e.montant) });
+    // Les transactions internes ne passent pas par la caisse : hors historique
+    if(Number(e.montant) > 0 && !e.interne){
+      const versEpargne = e.sens !== 'retrait';
+      const libelle = versEpargne ? '🏦 Dépôt épargne' : '🏦 Retrait épargne';
+      rows.push({
+        date: e.date || todayDateKey(),
+        type: libelle + (e.note ? ' — ' + e.note : ''),
+        montant: versEpargne ? -Number(e.montant) : Number(e.montant)
+      });
     }
   });
   rows.sort((a,b)=> a.date < b.date ? 1 : -1);
@@ -1139,7 +1238,8 @@ async function init(){
 
   document.getElementById('btnAddExpenseFixe').addEventListener('click', ()=>addExpense('fixe'));
   document.getElementById('btnAddExpenseAutre').addEventListener('click', ()=>addExpense('autre'));
-  document.getElementById('btnAddEpargne').addEventListener('click', addEpargne);
+  document.getElementById('btnAddDepot').addEventListener('click', ()=>addEpargne('depot'));
+  document.getElementById('btnAddRetrait').addEventListener('click', ()=>addEpargne('retrait'));
   document.getElementById('btnAddAcquisition').addEventListener('click', addAcquisition);
   document.getElementById('btnAddAvenir').addEventListener('click', addChargeAVenir);
   document.querySelectorAll('.tab').forEach(t=>{
