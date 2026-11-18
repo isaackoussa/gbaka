@@ -273,7 +273,7 @@
     display:flex;
     align-items:flex-end;
     gap:6px;
-    height:120px;
+    height:170px;
     margin-bottom:8px;
     padding:0 2px;
   }
@@ -284,7 +284,29 @@
     align-items:center;
     justify-content:flex-end;
     height:100%;
+    min-width:0;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
   }
+  .bar-value{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9px;
+    color:var(--text);
+    margin-bottom:3px;
+    white-space:nowrap;
+    letter-spacing:-0.3px;
+  }
+  .bar-value.zero{color:var(--text-soft);opacity:.6;}
+  .bar-wrap.selected .bar{background:linear-gradient(180deg, #ffd27a, var(--amber));}
+  .bar-wrap.selected .bar-value{color:var(--amber);font-weight:700;}
+  .chart-detail{
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    color:var(--text-soft);
+    margin:4px 0 16px;
+    text-align:center;
+  }
+  .chart-detail strong{color:var(--amber);}
   .bar{
     width:100%;
     max-width:26px;
@@ -432,6 +454,7 @@
 
     <p class="section-label">Tendance des recettes (12 derniers mois)</p>
     <div class="chart" id="chart"></div>
+    <p class="chart-detail" id="chartDetail"></p>
   </div>
 
   <div class="view" id="view-epargne">
@@ -1107,14 +1130,40 @@ function renderChart(){
   }
   const totals = months.map(mk=>monthTotal(mk).gains);
   const max = Math.max(...totals, 1);
+  if(chartSelected === null || chartSelected >= months.length) chartSelected = months.length-1;
   chart.innerHTML = months.map((mk,i)=>{
     const [y,m] = mk.split('-');
     const h = Math.max(2, Math.round((totals[i]/max)*100));
-    return `<div class="bar-wrap">
-      <div class="bar" style="height:${h}px" title="${formatFCFA(totals[i])}"></div>
+    return `<div class="bar-wrap${i===chartSelected?' selected':''}" data-i="${i}" title="${formatFCFA(totals[i])}">
+      <div class="bar-value${totals[i]?'':' zero'}">${compactFCFA(totals[i])}</div>
+      <div class="bar" style="height:${h}px"></div>
       <div class="bar-label">${m}/${y.slice(2)}</div>
     </div>`;
   }).join('');
+  const showDetail = ()=>{
+    const [y,m] = months[chartSelected].split('-');
+    const total12 = totals.reduce((a,b)=>a+b,0);
+    document.getElementById('chartDetail').innerHTML =
+      `${m}/${y} : <strong>${formatFCFA(totals[chartSelected])}</strong><br>Total 12 mois : ${formatFCFA(total12)}`;
+  };
+  chart.querySelectorAll('.bar-wrap').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      chartSelected = Number(el.dataset.i);
+      chart.querySelectorAll('.bar-wrap').forEach(b=>b.classList.toggle('selected', b===el));
+      showDetail();
+    });
+  });
+  showDetail();
+}
+let chartSelected = null;
+function compactFCFA(n){
+  n = Number(n||0);
+  if(n===0) return '0';
+  const abs = Math.abs(n);
+  const fmt = (v)=>(v>=100 ? Math.round(v) : Math.round(v*10)/10).toLocaleString('fr-FR');
+  if(abs>=1e6) return fmt(n/1e6)+'M';
+  if(abs>=1e3) return fmt(n/1e3)+'k';
+  return String(Math.round(n));
 }
 function renderReconciliation(){
   const g = totalGlobal();
