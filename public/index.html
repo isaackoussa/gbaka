@@ -454,7 +454,7 @@
 
     <p class="section-label">Tendance des recettes (12 derniers mois)</p>
     <div class="chart" id="chart"></div>
-    <p class="chart-detail" id="chartDetail"></p>
+    <p class="chart-detail" id="chartDetail" aria-live="polite"></p>
   </div>
 
   <div class="view" id="view-epargne">
@@ -1134,7 +1134,7 @@ function renderChart(){
   chart.innerHTML = months.map((mk,i)=>{
     const [y,m] = mk.split('-');
     const h = Math.max(2, Math.round((totals[i]/max)*100));
-    return `<div class="bar-wrap${i===chartSelected?' selected':''}" data-i="${i}" title="${formatFCFA(totals[i])}">
+    return `<div class="bar-wrap${i===chartSelected?' selected':''}" data-i="${i}" title="${formatFCFA(totals[i])}" role="button" tabindex="0" aria-label="${m}/${y} : ${formatFCFA(totals[i])}" aria-pressed="${i===chartSelected}">
       <div class="bar-value${totals[i]?'':' zero'}">${compactFCFA(totals[i])}</div>
       <div class="bar" style="height:${h}px"></div>
       <div class="bar-label">${m}/${y.slice(2)}</div>
@@ -1147,10 +1147,17 @@ function renderChart(){
       `${m}/${y} : <strong>${formatFCFA(totals[chartSelected])}</strong><br>Total 12 mois : ${formatFCFA(total12)}`;
   };
   chart.querySelectorAll('.bar-wrap').forEach(el=>{
-    el.addEventListener('click', ()=>{
+    const select = ()=>{
       chartSelected = Number(el.dataset.i);
-      chart.querySelectorAll('.bar-wrap').forEach(b=>b.classList.toggle('selected', b===el));
+      chart.querySelectorAll('.bar-wrap').forEach(b=>{
+        b.classList.toggle('selected', b===el);
+        b.setAttribute('aria-pressed', String(b===el));
+      });
       showDetail();
+    };
+    el.addEventListener('click', select);
+    el.addEventListener('keydown', e=>{
+      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); select(); }
     });
   });
   showDetail();
